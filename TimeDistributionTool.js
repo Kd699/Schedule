@@ -1,17 +1,20 @@
+import React, { useState, useEffect } from 'react';
+import { calculateTotalTime, updateChart, generateTimeTable } from './utils'; // Assuming these are in a separate file
+
 const TimeDistributionTool = () => {
-    const [startDateTime, setStartDateTime] = React.useState('2023-10-06T18:13');
-    const [endDateTime, setEndDateTime] = React.useState('2023-10-07T07:35');
-    const [totalTime, setTotalTime] = React.useState({ days: 0, hours: 0, minutes: 0 });
-    const [events, setEvents] = React.useState([
+    const [startDateTime, setStartDateTime] = useState('2023-10-06T18:13');
+    const [endDateTime, setEndDateTime] = useState('2023-10-07T07:35');
+    const [totalTime, setTotalTime] = useState({ days: 0, hours: 0, minutes: 0 });
+    const [events, setEvents] = useState([
         { name: 'Work', duration: 0, color: '#FF6B6B' },
         { name: 'Freshen up', duration: 0, color: '#4ECDC4' },
         { name: 'Meditate', duration: 0, color: '#45B7D1' },
         { name: 'Buffer', duration: 0, color: '#FFA07A' }
     ]);
-    const [newEventName, setNewEventName] = React.useState('');
-    const [deletedEvents, setDeletedEvents] = React.useState([]);
+    const [newEventName, setNewEventName] = useState('');
+    const [deletedEvents, setDeletedEvents] = useState([]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const { totalMinutes, formattedTime } = calculateTotalTime(startDateTime, endDateTime);
         setTotalTime(formattedTime);
         updateChart(events, totalMinutes);
@@ -26,43 +29,49 @@ const TimeDistributionTool = () => {
     const handleDurationChange = (index, newDuration) => {
         const newEvents = [...events];
         newEvents[index].duration = parseInt(newDuration);
+        adjustOtherEvents(newEvents, index);
         setEvents(newEvents);
     };
 
-    const addNewEvent = () => {
-        if (newEventName) {
-            setEvents([...events, { 
-                name: newEventName, 
-                duration: 0, 
-                color: `#${Math.floor(Math.random()*16777215).toString(16)}`
-            }]);
-            setNewEventName('');
+    const adjustOtherEvents = (newEvents, changedIndex) => {
+        const totalMinutes = calculateTotalMinutes();
+        const currentTotal = newEvents.reduce((sum, event) => sum + event.duration, 0);
+        const difference = totalMinutes - currentTotal;
+
+        if (difference === 0) return;
+
+        const otherEvents = newEvents.filter((_, index) => index !== changedIndex);
+        const otherTotal = otherEvents.reduce((sum, event) => sum + event.duration, 0);
+
+        otherEvents.forEach((event, index) => {
+            const proportion = event.duration / otherTotal;
+            const adjustment = Math.round(difference * proportion);
+            newEvents[index === changedIndex ? index : index + (index >= changedIndex ? 1 : 0)].duration += adjustment;
+        });
+
+        // Ensure total is exactly 100%
+        const finalTotal = newEvents.reduce((sum, event) => sum + event.duration, 0);
+        if (finalTotal !== totalMinutes) {
+            const lastIndex = newEvents.length - 1;
+            newEvents[lastIndex].duration += totalMinutes - finalTotal;
         }
     };
 
-    const deleteEvent = (index) => {
-        const eventToDelete = events[index];
-        setDeletedEvents([...deletedEvents, eventToDelete]);
-        setEvents(events.filter((_, i) => i !== index));
+    const calculateTotalMinutes = () => {
+        return totalTime.days * 24 * 60 + totalTime.hours * 60 + totalTime.minutes;
     };
 
-    const undoDelete = () => {
-        const lastDeleted = deletedEvents.pop();
-        if (lastDeleted) {
-            setEvents([...events, lastDeleted]);
-            setDeletedEvents([...deletedEvents]);
-        }
-    };
+    const distributeTime = () => {
+        const totalMinutes = calculateTotalMinutes();
+        const equalShare = Math.floor(totalMinutes / events.length);
+        const remainder = totalMinutes % events.length;
 
-    const reorderEvents = (index, direction) => {
-        const newEvents = [...events];
-        const targetIndex = direction === 'up' ? index - 1 : index + 1;
-        if (targetIndex >= 0 && targetIndex < events.length) {
-            const temp = newEvents[targetIndex];
-            newEvents[targetIndex] = newEvents[index];
-            newEvents[index] = temp;
-            setEvents(newEvents);
-        }
+        const newEvents = events.map((event, index) => ({
+            ...event,
+            duration: equalShare + (index < remainder ? 1 : 0)
+        }));
+
+        setEvents(newEvents);
     };
 
     return (
@@ -72,19 +81,17 @@ const TimeDistributionTool = () => {
             <div className="mb-4 flex justify-between">
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Start Date/Time:</label>
-                    <div className="flex items-center">
+                    <div className="mb-4">
+                        <button onClick={distributeTime} className="bg-purple-500 text-white p-2 rounded mr-2">Distribute</button>
                         <input 
-                            type="datetime-local" 
-                            value={startDateTime} 
-                            onChange={(e) => setStartDateTime(e.target.value)} 
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
+                            type="text" 
+                            value={newEventName} 
+                            onChange={(e) => setNewEventName(e.target.value)} 
+                            placeholder="New event name" 
+                            className="mr-2 p-2 border rounded"
                         />
-                        <button 
-                            onClick={() => handleNowButton(setStartDateTime)} 
-                            className="ml-2 bg-blue-500 text-white p-2 rounded"
-                        >
-                            Now
-                        </button>
+                        <button onClick={addNewEvent} className="bg-blue-500 text-white p-2 rounded">Add Event</button>
+                        <button onClick={undoDelete} className="bg-gray-500 text-white p-2 rounded ml-2">Undo Delete</button>
                     </div>
                 </div>
                 <div>
