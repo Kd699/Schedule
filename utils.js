@@ -1,7 +1,17 @@
-function calculateTotalMinutes(startTime, endTime) {
-    const start = new Date(`2000-01-01T${startTime}`);
-    const end = new Date(`2000-01-02T${endTime}`);
-    return (end - start) / 60000;
+function calculateTotalTime(startDateTime, endDateTime) {
+    const start = new Date(startDateTime);
+    const end = new Date(endDateTime);
+    const diffMilliseconds = end - start;
+    const totalMinutes = diffMilliseconds / 60000;
+
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = Math.floor(totalMinutes % 60);
+
+    return {
+        totalMinutes,
+        formattedTime: { days, hours, minutes }
+    };
 }
 
 function updateChart(events, totalMinutes) {
@@ -36,25 +46,23 @@ function updateChart(events, totalMinutes) {
         .text(d => `${Math.round(d.data.duration / totalMinutes * 100)}%`);
 }
 
-function formatDateTime(timeString) {
-    const now = new Date();
-    const date = now.toLocaleDateString();
-    const time = timeString + ':00';
-    return `${date} ${time}`;
+function formatDateTime(dateTimeString) {
+    const dateTime = new Date(dateTimeString);
+    return dateTime.toLocaleString();
 }
 
-function generateTimeTable(events, startTime) {
-    let currentTime = new Date(`2000-01-01T${startTime}`);
+function generateTimeTable(events, startDateTime) {
+    let currentTime = new Date(startDateTime);
     return events.map(event => {
-        const startTimeStr = currentTime.toTimeString().slice(0, 8);
+        const startTimeStr = currentTime.toLocaleString();
         currentTime = new Date(currentTime.getTime() + event.duration * 60000);
-        const endTimeStr = currentTime.toTimeString().slice(0, 8);
+        const endTimeStr = currentTime.toLocaleString();
         return {
-            date: new Date().toLocaleDateString(),
+            date: currentTime.toLocaleDateString(),
             task: event.name,
             duration: `${Math.floor(event.duration / 60)}:${(event.duration % 60).toString().padStart(2, '0')}:00`,
-            startTime: formatDateTime(startTimeStr),
-            endTime: formatDateTime(endTimeStr)
+            startTime: startTimeStr,
+            endTime: endTimeStr
         };
     });
 }
