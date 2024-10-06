@@ -1,7 +1,7 @@
 const TimeDistributionTool = () => {
-    const [startTime, setStartTime] = React.useState('18:13');
-    const [endTime, setEndTime] = React.useState('07:35');
-    const [totalMinutes, setTotalMinutes] = React.useState(0);
+    const [startDateTime, setStartDateTime] = React.useState('2023-10-06T18:13');
+    const [endDateTime, setEndDateTime] = React.useState('2023-10-07T07:35');
+    const [totalTime, setTotalTime] = React.useState({ days: 0, hours: 0, minutes: 0 });
     const [events, setEvents] = React.useState([
         { name: 'Work', duration: 0, color: '#FF6B6B' },
         { name: 'Freshen up', duration: 0, color: '#4ECDC4' },
@@ -12,12 +12,16 @@ const TimeDistributionTool = () => {
     const [deletedEvents, setDeletedEvents] = React.useState([]);
 
     React.useEffect(() => {
-        setTotalMinutes(calculateTotalMinutes(startTime, endTime));
-    }, [startTime, endTime]);
-
-    React.useEffect(() => {
+        const { totalMinutes, formattedTime } = calculateTotalTime(startDateTime, endDateTime);
+        setTotalTime(formattedTime);
         updateChart(events, totalMinutes);
-    }, [events, totalMinutes]);
+    }, [startDateTime, endDateTime, events]);
+
+    const handleNowButton = (setter) => {
+        const now = new Date();
+        const formattedNow = now.toISOString().slice(0, 16);
+        setter(formattedNow);
+    };
 
     const handleDurationChange = (index, newDuration) => {
         const newEvents = [...events];
@@ -67,12 +71,38 @@ const TimeDistributionTool = () => {
             
             <div className="mb-4 flex justify-between">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Start Time:</label>
-                    <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" />
+                    <label className="block text-sm font-medium text-gray-700">Start Date/Time:</label>
+                    <div className="flex items-center">
+                        <input 
+                            type="datetime-local" 
+                            value={startDateTime} 
+                            onChange={(e) => setStartDateTime(e.target.value)} 
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
+                        />
+                        <button 
+                            onClick={() => handleNowButton(setStartDateTime)} 
+                            className="ml-2 bg-blue-500 text-white p-2 rounded"
+                        >
+                            Now
+                        </button>
+                    </div>
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">End Time:</label>
-                    <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" />
+                    <label className="block text-sm font-medium text-gray-700">End Date/Time:</label>
+                    <div className="flex items-center">
+                        <input 
+                            type="datetime-local" 
+                            value={endDateTime} 
+                            onChange={(e) => setEndDateTime(e.target.value)} 
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
+                        />
+                        <button 
+                            onClick={() => handleNowButton(setEndDateTime)} 
+                            className="ml-2 bg-blue-500 text-white p-2 rounded"
+                        >
+                            Now
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -99,14 +129,14 @@ const TimeDistributionTool = () => {
                         <input
                             type="range"
                             min="0"
-                            max={totalMinutes}
+                            max={totalTime.days * 24 * 60 + totalTime.hours * 60 + totalTime.minutes}
                             value={item.duration}
                             onChange={(e) => handleDurationChange(index, e.target.value)}
                             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                         />
                         <div className="flex justify-between mt-2 text-sm text-gray-600">
                             <span>{item.duration} minutes</span>
-                            <span>{Math.round(item.duration / totalMinutes * 100)}%</span>
+                            <span>{Math.round(item.duration / (totalTime.days * 24 * 60 + totalTime.hours * 60 + totalTime.minutes) * 100)}%</span>
                         </div>
                         <div className="flex justify-between mt-4">
                             <button onClick={() => reorderEvents(index, 'up')} className="bg-green-500 text-white p-2 rounded">Move Up</button>
@@ -117,7 +147,9 @@ const TimeDistributionTool = () => {
                 ))}
             </div>
 
-            <p className="mt-8 text-center text-lg font-semibold text-gray-700">Total time: {totalMinutes} minutes</p>
+            <p className="mt-8 text-center text-lg font-semibold text-gray-700">
+                Total time: {totalTime.days} days, {totalTime.hours} hours, {totalTime.minutes} minutes
+            </p>
 
             <div className="mt-8">
                 <h2 className="text-2xl font-bold mb-4">Time Table</h2>
@@ -132,7 +164,7 @@ const TimeDistributionTool = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {generateTimeTable(events, startTime).map((row, index) => (
+                        {generateTimeTable(events, startDateTime).map((row, index) => (
                             <tr key={index}>
                                 <td className="py-2 px-4 border-b">{row.date}</td>
                                 <td className="py-2 px-4 border-b">{row.task}</td>
