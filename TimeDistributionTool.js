@@ -87,17 +87,85 @@ const TimeDistributionTool = () => {
         }
     };
 
-    const distributeTime = () => {
+    const distributeTimeEqually = () => {
         const totalMinutes = calculateTotalTime(startDateTime, endDateTime).totalMinutes;
-        const equalShare = Math.floor(totalMinutes / events.length);
-        const newEvents = events.map(event => ({ ...event, duration: equalShare }));
-        
-        // Distribute any remaining minutes
-        const remainingMinutes = totalMinutes - (equalShare * events.length);
-        for (let i = 0; i < remainingMinutes; i++) {
-            newEvents[i % newEvents.length].duration += 1;
+        const unlockedEvents = events.filter(event => !event.locked);
+        const lockedTime = events.filter(event => event.locked).reduce((sum, event) => sum + event.duration, 0);
+        const remainingTime = totalMinutes - lockedTime;
+
+        if (remainingTime <= 0) {
+            alert("No time left to distribute among unlocked tasks!");
+            return;
         }
 
+        const equalShare = Math.floor(remainingTime / unlockedEvents.length);
+
+        if (equalShare === 0) {
+            alert("Not enough time to distribute equally among unlocked tasks!");
+            return;
+        }
+
+        const newEvents = events.map(event => {
+            if (event.locked) return event;
+            return { ...event, duration: equalShare };
+        });
+
+        // Distribute any remaining minutes
+        const distributedTime = equalShare * unlockedEvents.length;
+        const leftoverMinutes = remainingTime - distributedTime;
+        for (let i = 0; i < leftoverMinutes; i++) {
+            const index = events.findIndex((event, idx) => !event.locked && idx >= i % unlockedEvents.length);
+            if (index !== -1) newEvents[index].duration += 1;
+        }
+
+        setEvents(newEvents);
+    };
+
+    const distributeTimeProportionally = () => {
+        const totalMinutes = calculateTotalTime(startDateTime, endDateTime).totalMinutes;
+        const unlockedEvents = events.filter(event => !event.locked);
+        const lockedTime = events.filter(event => event.locked).reduce((sum, event) => sum + event.duration, 0);
+        const remainingTime = totalMinutes - lockedTime;
+
+        if (remainingTime <= 0) {
+            alert("No time left to distribute among unlocked tasks!");
+            return;
+        }
+
+        const totalUnlockedTime = unlockedEvents.reduce((sum, event) => sum + event.duration, 0);
+
+        if (totalUnlockedTime === 0) {
+            distributeTimeEqually(); // If all unlocked tasks have 0 duration, distribute equally
+            return;
+        }
+
+        const newEvents = events.map(event => {
+            if (event.locked) return event;
+            const proportion = event.duration / totalUnlockedTime;
+            return { ...event, duration: Math.round(remainingTime * proportion) };
+        });
+
+        // Adjust for any rounding errors
+        const finalTotal = newEvents.reduce((sum, event) => sum + event.duration, 0);
+        const diff = totalMinutes - finalTotal;
+        const lastUnlockedIndex = newEvents.map(e => !e.locked).lastIndexOf(true);
+        if (lastUnlockedIndex !== -1) {
+            newEvents[lastUnlockedIndex].duration += diff;
+        }
+
+        setEvents(newEvents);
+    };
+
+    const areTasksEquallyDistributed = () => {
+        const unlockedEvents = events.filter(event => !event.locked);
+        if (unlockedEvents.length <= 1) return true;
+        const firstDuration = unlockedEvents[0].duration;
+        return unlockedEvents.every(event => event.duration === firstDuration);
+    };
+
+    const toggleLock = (index) => {
+        const newEvents = [...events];
+        newEvents[index].locked = !newEvents[index].locked;
         setEvents(newEvents);
     };
 
@@ -204,34 +272,58 @@ const TimeDistributionTool = () => {
             </div>
 
             <div className="mb-4 flex justify-between items-center">
-            <div>
-                <input 
-                    type="text" 
-                    value={newEventName} 
-                    onChange={(e) => setNewEventName(e.target.value)} 
-                    placeholder="New event name" 
-                    className="mr-2 p-2 border rounded"
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            addNewEvent();
-                        }
-                    }}
-                />
-                <button onClick={addNewEvent} className="bg-blue-500 text-white p-2 rounded">Add Event</button>
-                <button onClick={undoDelete} className="bg-gray-500 text-white p-2 rounded ml-2">Undo Delete</button>
+                <div>
+                    <input 
+                        type="text" 
+                        value={newEventName} 
+                        onChange={(e) => setNewEventName(e.target.value)} 
+                        placeholder="New event name" 
+                        className="mr-2 p-2 border rounded"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                addNewEvent();
+                            }
+                        }}
+                    />
+                    <button onClick={addNewEvent} className="bg-blue-500 text-white p-2 rounded">Add Event</button>
+                    <button onClick={undoDelete} className="bg-gray-500 text-white p-2 rounded ml-2">Undo Delete</button>
+                </div>
+                <div>
+                    <button 
+                        onClick={distributeTimeEqually} 
+                        className="bg-green-500 text-white p-2 rounded mr-2"
+                        disabled={areTasksEquallyDistributed()}
+                    >
+                        Distribute Equally
+                    </button>
+                    <button 
+                        onClick={distributeTimeProportionally} 
+                        className="bg-yellow-500 text-white p-2 rounded"
+                    >
+                        Distribute Proportionally
+                    </button>
+                </div>
             </div>
-            <button onClick={distributeTime} className="bg-green-500 text-white p-2 rounded">Distribute</button>
-        </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {events.map((item, index) => (
                     <div key={item.name} className="bg-white p-4 rounded-md shadow">
-                        <label className="block text-lg font-semibold mb-2 text-gray-700">{item.name}</label>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="text-lg font-semibold text-gray-700">{item.name}</label>
+                            <button 
+                                onClick={() => toggleLock(index)} 
+                                className={`p-2 rounded ${item.locked ? 'bg-red-500' : 'bg-green-500'} text-white`}
+                            >
+                                {item.locked ? 'Unlock' : 'Lock'}
+                            </button>
+                        </div>
                         <input
                             type="range"
                             min="0"
                             max={totalTime.days * 24 * 60 + totalTime.hours * 60 + totalTime.minutes}
                             value={item.duration}
                             onChange={(e) => handleDurationChange(index, e.target.value)}
+                            disabled={item.locked}
                             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                         />
                         <div className="flex justify-between mt-2 text-sm text-gray-600">
