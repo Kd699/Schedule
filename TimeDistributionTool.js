@@ -1,24 +1,53 @@
-import React, { useState, useEffect } from 'react';
-import { calculateTotalTime, updateChart, generateTimeTable } from './utils'; // Assuming these are in a separate file
-
 const TimeDistributionTool = () => {
-    const [startDateTime, setStartDateTime] = useState('2023-10-06T18:13');
-    const [endDateTime, setEndDateTime] = useState('2023-10-07T07:35');
-    const [totalTime, setTotalTime] = useState({ days: 0, hours: 0, minutes: 0 });
-    const [events, setEvents] = useState([
+    const [startDateTime, setStartDateTime] = React.useState('2023-10-06T18:13');
+    const [endDateTime, setEndDateTime] = React.useState('2023-10-07T07:35');
+    const [totalTime, setTotalTime] = React.useState({ days: 0, hours: 0, minutes: 0 });
+    const [events, setEvents] = React.useState([
         { name: 'Work', duration: 0, color: '#FF6B6B' },
         { name: 'Freshen up', duration: 0, color: '#4ECDC4' },
         { name: 'Meditate', duration: 0, color: '#45B7D1' },
         { name: 'Buffer', duration: 0, color: '#FFA07A' }
     ]);
-    const [newEventName, setNewEventName] = useState('');
-    const [deletedEvents, setDeletedEvents] = useState([]);
+    const [newEventName, setNewEventName] = React.useState('');
+    const [deletedEvents, setDeletedEvents] = React.useState([]);
+    const [tubularInput, setTubularInput] = React.useState(''); // Text area input for tubular data
 
-    useEffect(() => {
+    React.useEffect(() => {
         const { totalMinutes, formattedTime } = calculateTotalTime(startDateTime, endDateTime);
         setTotalTime(formattedTime);
         updateChart(events, totalMinutes);
     }, [startDateTime, endDateTime, events]);
+
+    // Function to handle parsing the text area input when submit button is clicked
+    const handleSubmit = () => {
+        if (tubularInput) {
+            parseTubularData(tubularInput);
+        }
+    };
+
+    // Function to parse tubular data and update the events
+    const parseTubularData = (data) => {
+        const rows = data.trim().split('\n');
+        const parsedEvents = rows.map((row) => {
+            const [date, task, duration, startTime, endTime] = row.split('\t');
+            return {
+                name: task,
+                duration: parseDuration(duration),
+                startTime,
+                endTime,
+                color: `#${Math.floor(Math.random() * 16777215).toString(16)}`
+            };
+        });
+        setEvents(parsedEvents);
+    };
+
+    // Function to convert HH:MM:SS format into total minutes
+    const parseDuration = (durationString) => {
+        const parts = durationString.split(':');
+        const hours = parseInt(parts[0]);
+        const minutes = parseInt(parts[1]);
+        return hours * 60 + minutes;
+    };
 
     const handleNowButton = (setter) => {
         const now = new Date();
@@ -29,69 +58,126 @@ const TimeDistributionTool = () => {
     const handleDurationChange = (index, newDuration) => {
         const newEvents = [...events];
         newEvents[index].duration = parseInt(newDuration);
-        adjustOtherEvents(newEvents, index);
+        adjustOtherTasks(newEvents, index);
         setEvents(newEvents);
     };
 
-    const adjustOtherEvents = (newEvents, changedIndex) => {
-        const totalMinutes = calculateTotalMinutes();
-        const currentTotal = newEvents.reduce((sum, event) => sum + event.duration, 0);
-        const difference = totalMinutes - currentTotal;
+    const adjustOtherTasks = (newEvents, changedIndex) => {
+        const totalMinutes = calculateTotalTime(startDateTime, endDateTime).totalMinutes;
+        const totalCurrentDuration = newEvents.reduce((sum, event) => sum + event.duration, 0);
+        const difference = totalMinutes - totalCurrentDuration;
 
-        if (difference === 0) return;
+        if (difference !== 0) {
+            const otherEvents = newEvents.filter((_, i) => i !== changedIndex);
+            const totalOtherDuration = otherEvents.reduce((sum, event) => sum + event.duration, 0);
 
-        const otherEvents = newEvents.filter((_, index) => index !== changedIndex);
-        const otherTotal = otherEvents.reduce((sum, event) => sum + event.duration, 0);
-
-        otherEvents.forEach((event, index) => {
-            const proportion = event.duration / otherTotal;
-            const adjustment = Math.round(difference * proportion);
-            newEvents[index === changedIndex ? index : index + (index >= changedIndex ? 1 : 0)].duration += adjustment;
-        });
+            otherEvents.forEach((event, i) => {
+                if (i !== changedIndex) {
+                    const proportion = event.duration / totalOtherDuration;
+                    event.duration += Math.round(difference * proportion);
+                }
+            });
+        }
 
         // Ensure total is exactly 100%
         const finalTotal = newEvents.reduce((sum, event) => sum + event.duration, 0);
         if (finalTotal !== totalMinutes) {
-            const lastIndex = newEvents.length - 1;
-            newEvents[lastIndex].duration += totalMinutes - finalTotal;
+            const diff = totalMinutes - finalTotal;
+            newEvents[newEvents.length - 1].duration += diff;
         }
     };
 
-    const calculateTotalMinutes = () => {
-        return totalTime.days * 24 * 60 + totalTime.hours * 60 + totalTime.minutes;
-    };
-
     const distributeTime = () => {
-        const totalMinutes = calculateTotalMinutes();
+        const totalMinutes = calculateTotalTime(startDateTime, endDateTime).totalMinutes;
         const equalShare = Math.floor(totalMinutes / events.length);
-        const remainder = totalMinutes % events.length;
-
-        const newEvents = events.map((event, index) => ({
-            ...event,
-            duration: equalShare + (index < remainder ? 1 : 0)
-        }));
+        const newEvents = events.map(event => ({ ...event, duration: equalShare }));
+        
+        // Distribute any remaining minutes
+        const remainingMinutes = totalMinutes - (equalShare * events.length);
+        for (let i = 0; i < remainingMinutes; i++) {
+            newEvents[i % newEvents.length].duration += 1;
+        }
 
         setEvents(newEvents);
+    };
+
+    const addNewEvent = () => {
+        if (newEventName) {
+            setEvents([...events, { 
+                name: newEventName, 
+                duration: 0, 
+                color: `#${Math.floor(Math.random()*16777215).toString(16)}`
+            }]);
+            setNewEventName('');
+        }
+    };
+
+    const deleteEvent = (index) => {
+        const eventToDelete = events[index];
+        setDeletedEvents([...deletedEvents, eventToDelete]);
+        const newEvents = events.filter((_, i) => i !== index);
+        adjustOtherTasks(newEvents, -1);
+        setEvents(newEvents);
+    };
+
+    const undoDelete = () => {
+        const lastDeleted = deletedEvents.pop();
+        if (lastDeleted) {
+            const newEvents = [...events, lastDeleted];
+            adjustOtherTasks(newEvents, newEvents.length - 1);
+            setEvents(newEvents);
+            setDeletedEvents([...deletedEvents]);
+        }
+    };
+
+    const reorderEvents = (index, direction) => {
+        const newEvents = [...events];
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex >= 0 && targetIndex < events.length) {
+            const temp = newEvents[targetIndex];
+            newEvents[targetIndex] = newEvents[index];
+            newEvents[index] = temp;
+            setEvents(newEvents);
+        }
     };
 
     return (
         <div className="container mx-auto p-8 bg-gray-100 rounded-lg shadow-lg">
             <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">Enhanced Time Distribution Tool</h1>
             
+                {/* Text Area for Tubular Data */}
+                <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Enter Tubular Data:</label>
+                <textarea
+                    value={tubularInput}
+                    onChange={(e) => setTubularInput(e.target.value)}
+                    placeholder="Paste tubular data here..."
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm h-32"
+                />
+                <button
+                    onClick={handleSubmit}
+                    className="mt-2 bg-blue-500 text-white p-2 rounded"
+                >
+                    Submit Tubular Data
+                </button>
+            </div>
+
             <div className="mb-4 flex justify-between">
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Start Date/Time:</label>
-                    <div className="mb-4">
-                        <button onClick={distributeTime} className="bg-purple-500 text-white p-2 rounded mr-2">Distribute</button>
+                    <div className="flex items-center">
                         <input 
-                            type="text" 
-                            value={newEventName} 
-                            onChange={(e) => setNewEventName(e.target.value)} 
-                            placeholder="New event name" 
-                            className="mr-2 p-2 border rounded"
+                            type="datetime-local" 
+                            value={startDateTime} 
+                            onChange={(e) => setStartDateTime(e.target.value)} 
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
                         />
-                        <button onClick={addNewEvent} className="bg-blue-500 text-white p-2 rounded">Add Event</button>
-                        <button onClick={undoDelete} className="bg-gray-500 text-white p-2 rounded ml-2">Undo Delete</button>
+                        <button 
+                            onClick={() => handleNowButton(setStartDateTime)} 
+                            className="ml-2 bg-blue-500 text-white p-2 rounded"
+                        >
+                            Now
+                        </button>
                     </div>
                 </div>
                 <div>
@@ -117,18 +203,25 @@ const TimeDistributionTool = () => {
                 <svg id="chart"></svg>
             </div>
 
-            <div className="mb-4">
+            <div className="mb-4 flex justify-between items-center">
+            <div>
                 <input 
                     type="text" 
                     value={newEventName} 
                     onChange={(e) => setNewEventName(e.target.value)} 
                     placeholder="New event name" 
                     className="mr-2 p-2 border rounded"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            addNewEvent();
+                        }
+                    }}
                 />
                 <button onClick={addNewEvent} className="bg-blue-500 text-white p-2 rounded">Add Event</button>
                 <button onClick={undoDelete} className="bg-gray-500 text-white p-2 rounded ml-2">Undo Delete</button>
             </div>
-
+            <button onClick={distributeTime} className="bg-green-500 text-white p-2 rounded">Distribute</button>
+        </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {events.map((item, index) => (
                     <div key={item.name} className="bg-white p-4 rounded-md shadow">
