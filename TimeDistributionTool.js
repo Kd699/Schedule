@@ -1,6 +1,13 @@
 const TimeDistributionTool = () => {
-    const [startDateTime, setStartDateTime] = React.useState('2023-10-06T18:13');
-    const [endDateTime, setEndDateTime] = React.useState('2023-10-07T07:35');
+    const [startDateTime, setStartDateTime] = React.useState(() => {
+        const now = new Date();
+        return now.toISOString();
+    });
+    const [endDateTime, setEndDateTime] = React.useState(() => {
+        const now = new Date();
+        now.setHours(now.getHours() + 1);
+        return now.toISOString();
+    });
     const [totalTime, setTotalTime] = React.useState({ days: 0, hours: 0, minutes: 0 });
     const [events, setEvents] = React.useState([
         { name: 'Work', duration: 0, color: '#FF6B6B' },
@@ -65,8 +72,8 @@ const TimeDistributionTool = () => {
         
         // Update start and end times
         if (firstStartTime && lastEndTime) {
-            setStartDateTime(firstStartTime.toISOString().slice(0, 16));
-            setEndDateTime(lastEndTime.toISOString().slice(0, 16));
+            setStartDateTime(firstStartTime.toISOString());
+            setEndDateTime(lastEndTime.toISOString());
         }
         
         setEvents(parsedEvents);
@@ -82,13 +89,12 @@ const TimeDistributionTool = () => {
 
     const handleNowButton = (setter) => {
         const now = new Date();
-        const formattedNow = now.toISOString().slice(0, 16);
-        setter(formattedNow);
+        setter(now.toISOString());
     };
 
     const handleDurationChange = (index, newDuration) => {
         const newEvents = [...events];
-        newEvents[index].duration = parseInt(newDuration);
+        newEvents[index].duration = Math.round(parseFloat(newDuration));
         adjustOtherTasks(newEvents, index);
         setEvents(newEvents);
     };
@@ -177,18 +183,20 @@ const TimeDistributionTool = () => {
             return;
         }
 
+        let distributedTime = 0;
         const newEvents = events.map(event => {
             if (event.locked) return event;
             const proportion = event.duration / totalUnlockedTime;
-            return { ...event, duration: Math.round(remainingTime * proportion) };
+            const newDuration = Math.floor(remainingTime * proportion);
+            distributedTime += newDuration;
+            return { ...event, duration: newDuration };
         });
 
-        // Adjust for any rounding errors
-        const finalTotal = newEvents.reduce((sum, event) => sum + event.duration, 0);
-        const diff = totalMinutes - finalTotal;
-        const lastUnlockedIndex = newEvents.map(e => !e.locked).lastIndexOf(true);
-        if (lastUnlockedIndex !== -1) {
-            newEvents[lastUnlockedIndex].duration += diff;
+        // Distribute any remaining minutes
+        const leftoverMinutes = remainingTime - distributedTime;
+        for (let i = 0; i < leftoverMinutes; i++) {
+            const index = newEvents.findIndex(event => !event.locked);
+            if (index !== -1) newEvents[index].duration += 1;
         }
 
         setEvents(newEvents);
@@ -249,7 +257,20 @@ const TimeDistributionTool = () => {
 
     const formatDateTimeForInput = (dateString) => {
         const date = new Date(dateString);
-        return date.toISOString().slice(0, 16);
+        const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+        return (new Date(date.getTime() - userTimezoneOffset)).toISOString().slice(0, 16);
+    };
+
+    const formatDateTimeForDisplay = (dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
     };
 
     return (
@@ -280,7 +301,7 @@ const TimeDistributionTool = () => {
                         <input 
                             type="datetime-local" 
                             value={formatDateTimeForInput(startDateTime)} 
-                            onChange={(e) => setStartDateTime(e.target.value)} 
+                            onChange={(e) => setStartDateTime(new Date(e.target.value).toISOString())} 
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
                         />
                         <button 
@@ -290,6 +311,9 @@ const TimeDistributionTool = () => {
                             Now
                         </button>
                     </div>
+                    <div className="text-sm text-gray-600 mt-1">
+                        {formatDateTimeForDisplay(startDateTime)}
+                    </div>
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700">End Date/Time:</label>
@@ -297,7 +321,7 @@ const TimeDistributionTool = () => {
                         <input 
                             type="datetime-local" 
                             value={formatDateTimeForInput(endDateTime)} 
-                            onChange={(e) => setEndDateTime(e.target.value)} 
+                            onChange={(e) => setEndDateTime(new Date(e.target.value).toISOString())} 
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
                         />
                         <button 
@@ -306,6 +330,9 @@ const TimeDistributionTool = () => {
                         >
                             Now
                         </button>
+                    </div>
+                    <div className="text-sm text-gray-600 mt-1">
+                        {formatDateTimeForDisplay(endDateTime)}
                     </div>
                 </div>
             </div>
