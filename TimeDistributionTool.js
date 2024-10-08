@@ -13,9 +13,11 @@ const TimeDistributionTool = () => {
     const [tubularInput, setTubularInput] = React.useState(''); // Text area input for tubular data
 
     React.useEffect(() => {
-        const { totalMinutes, formattedTime } = calculateTotalTime(startDateTime, endDateTime);
-        setTotalTime(formattedTime);
-        updateChart(events, totalMinutes);
+        if (events.length > 0) {
+            const { totalMinutes, formattedTime } = calculateTotalTime(startDateTime, endDateTime);
+            setTotalTime(formattedTime);
+            updateChart(events, totalMinutes);
+        }
     }, [startDateTime, endDateTime, events]);
 
     // Function to handle parsing the text area input when submit button is clicked
@@ -25,19 +27,48 @@ const TimeDistributionTool = () => {
         }
     };
 
+    // Helper function to parse date string in DD/MM/YYYY format
+    const parseDate = (dateString, timeString) => {
+        const [day, month, year] = dateString.split('/');
+        const [hours, minutes] = timeString.split(':');
+        return new Date(year, month - 1, day, hours, minutes);
+    };
+
     // Function to parse tubular data and update the events
     const parseTubularData = (data) => {
         const rows = data.trim().split('\n');
+        let firstStartTime = null;
+        let lastEndTime = null;
         const parsedEvents = rows.map((row) => {
-            const [date, task, duration, startTime, endTime] = row.split('\t');
+            const [date, task, duration, startTimeStr, endTimeStr] = row.split('\t');
+            const [startDate, startTime] = startTimeStr.split(', ');
+            const [endDate, endTime] = endTimeStr.split(', ');
+            
+            const startDateTime = parseDate(startDate, startTime);
+            const endDateTime = parseDate(endDate, endTime);
+            
+            if (!firstStartTime || startDateTime < firstStartTime) {
+                firstStartTime = startDateTime;
+            }
+            if (!lastEndTime || endDateTime > lastEndTime) {
+                lastEndTime = endDateTime;
+            }
+
             return {
                 name: task,
                 duration: parseDuration(duration),
-                startTime,
-                endTime,
+                startTime: startDateTime.toISOString(),
+                endTime: endDateTime.toISOString(),
                 color: `#${Math.floor(Math.random() * 16777215).toString(16)}`
             };
         });
+        
+        // Update start and end times
+        if (firstStartTime && lastEndTime) {
+            setStartDateTime(firstStartTime.toISOString().slice(0, 16));
+            setEndDateTime(lastEndTime.toISOString().slice(0, 16));
+        }
+        
         setEvents(parsedEvents);
     };
 
@@ -68,22 +99,29 @@ const TimeDistributionTool = () => {
         const difference = totalMinutes - totalCurrentDuration;
 
         if (difference !== 0) {
-            const otherEvents = newEvents.filter((_, i) => i !== changedIndex);
-            const totalOtherDuration = otherEvents.reduce((sum, event) => sum + event.duration, 0);
+            const adjustableEvents = newEvents.filter((event, i) => i !== changedIndex && !event.locked);
+            const totalAdjustableDuration = adjustableEvents.reduce((sum, event) => sum + event.duration, 0);
 
-            otherEvents.forEach((event, i) => {
-                if (i !== changedIndex) {
-                    const proportion = event.duration / totalOtherDuration;
+            if (totalAdjustableDuration > 0) {
+                adjustableEvents.forEach(event => {
+                    const proportion = event.duration / totalAdjustableDuration;
                     event.duration += Math.round(difference * proportion);
-                }
-            });
+                });
+            } else {
+                console.warn("No adjustable events found. Unable to distribute time difference.");
+            }
         }
 
         // Ensure total is exactly 100%
         const finalTotal = newEvents.reduce((sum, event) => sum + event.duration, 0);
         if (finalTotal !== totalMinutes) {
             const diff = totalMinutes - finalTotal;
-            newEvents[newEvents.length - 1].duration += diff;
+            const lastAdjustableIndex = newEvents.findLastIndex(event => !event.locked);
+            if (lastAdjustableIndex !== -1) {
+                newEvents[lastAdjustableIndex].duration += diff;
+            } else {
+                console.warn("No adjustable events found. Unable to correct final total.");
+            }
         }
     };
 
@@ -114,7 +152,7 @@ const TimeDistributionTool = () => {
         const distributedTime = equalShare * unlockedEvents.length;
         const leftoverMinutes = remainingTime - distributedTime;
         for (let i = 0; i < leftoverMinutes; i++) {
-            const index = events.findIndex((event, idx) => !event.locked && idx >= i % unlockedEvents.length);
+            const index = newEvents.findIndex((event, idx) => !event.locked && event.duration === equalShare);
             if (index !== -1) newEvents[index].duration += 1;
         }
 
@@ -209,6 +247,11 @@ const TimeDistributionTool = () => {
         }
     };
 
+    const formatDateTimeForInput = (dateString) => {
+        const date = new Date(dateString);
+        return date.toISOString().slice(0, 16);
+    };
+
     return (
         <div className="container mx-auto p-8 bg-gray-100 rounded-lg shadow-lg">
             <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">Enhanced Time Distribution Tool</h1>
@@ -236,7 +279,7 @@ const TimeDistributionTool = () => {
                     <div className="flex items-center">
                         <input 
                             type="datetime-local" 
-                            value={startDateTime} 
+                            value={formatDateTimeForInput(startDateTime)} 
                             onChange={(e) => setStartDateTime(e.target.value)} 
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
                         />
@@ -253,7 +296,7 @@ const TimeDistributionTool = () => {
                     <div className="flex items-center">
                         <input 
                             type="datetime-local" 
-                            value={endDateTime} 
+                            value={formatDateTimeForInput(endDateTime)} 
                             onChange={(e) => setEndDateTime(e.target.value)} 
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
                         />
