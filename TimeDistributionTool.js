@@ -1,13 +1,7 @@
 const TimeDistributionTool = () => {
-    const [startDateTime, setStartDateTime] = React.useState(() => {
-        const now = new Date();
-        return now.toISOString();
-    });
-    const [endDateTime, setEndDateTime] = React.useState(() => {
-        const now = new Date();
-        now.setHours(now.getHours() + 1);
-        return now.toISOString();
-    });
+    const now = new Date();
+    const [startDateTime, setStartDateTime] = React.useState(new Date(now.getTime() + 60 * 60 * 1000).toISOString().slice(0, 16));
+    const [endDateTime, setEndDateTime] = React.useState(new Date(new Date(startDateTime).getTime() + 2 * 60 * 60 * 1000).toISOString().slice(0, 16));
     const [totalTime, setTotalTime] = React.useState({ days: 0, hours: 0, minutes: 0 });
     const [events, setEvents] = React.useState([
         { name: 'Work', duration: 0, color: '#FF6B6B' },
@@ -17,69 +11,36 @@ const TimeDistributionTool = () => {
     ]);
     const [newEventName, setNewEventName] = React.useState('');
     const [deletedEvents, setDeletedEvents] = React.useState([]);
-    const [tubularInput, setTubularInput] = React.useState(''); // Text area input for tubular data
+    const [tubularInput, setTubularInput] = React.useState('');
+    const tableRef = React.useRef(null);
 
     React.useEffect(() => {
-        if (events.length > 0) {
-            const { totalMinutes, formattedTime } = calculateTotalTime(startDateTime, endDateTime);
-            setTotalTime(formattedTime);
-            updateChart(events, totalMinutes);
-        }
+        const { totalMinutes, formattedTime } = calculateTotalTime(startDateTime, endDateTime);
+        setTotalTime(formattedTime);
+        updateChart(events, totalMinutes);
     }, [startDateTime, endDateTime, events]);
 
-    // Function to handle parsing the text area input when submit button is clicked
     const handleSubmit = () => {
         if (tubularInput) {
             parseTubularData(tubularInput);
         }
     };
 
-    // Helper function to parse date string in DD/MM/YYYY format
-    const parseDate = (dateString, timeString) => {
-        const [day, month, year] = dateString.split('/');
-        const [hours, minutes] = timeString.split(':');
-        return new Date(year, month - 1, day, hours, minutes);
-    };
-
-    // Function to parse tubular data and update the events
     const parseTubularData = (data) => {
         const rows = data.trim().split('\n');
-        let firstStartTime = null;
-        let lastEndTime = null;
         const parsedEvents = rows.map((row) => {
-            const [date, task, duration, startTimeStr, endTimeStr] = row.split('\t');
-            const [startDate, startTime] = startTimeStr.split(', ');
-            const [endDate, endTime] = endTimeStr.split(', ');
-            
-            const startDateTime = parseDate(startDate, startTime);
-            const endDateTime = parseDate(endDate, endTime);
-            
-            if (!firstStartTime || startDateTime < firstStartTime) {
-                firstStartTime = startDateTime;
-            }
-            if (!lastEndTime || endDateTime > lastEndTime) {
-                lastEndTime = endDateTime;
-            }
-
+            const [date, task, duration, startTime, endTime] = row.split('\t');
             return {
                 name: task,
                 duration: parseDuration(duration),
-                startTime: startDateTime.toISOString(),
-                endTime: endDateTime.toISOString(),
+                startTime,
+                endTime,
                 color: `#${Math.floor(Math.random() * 16777215).toString(16)}`
             };
         });
-        
-        // Update start and end times
-        if (firstStartTime && lastEndTime) {
-            setStartDateTime(firstStartTime.toISOString());
-            setEndDateTime(lastEndTime.toISOString());
-        }
-        
         setEvents(parsedEvents);
     };
 
-    // Function to convert HH:MM:SS format into total minutes
     const parseDuration = (durationString) => {
         const parts = durationString.split(':');
         const hours = parseInt(parts[0]);
@@ -89,13 +50,13 @@ const TimeDistributionTool = () => {
 
     const handleNowButton = (setter) => {
         const now = new Date();
-        setter(now.toISOString());
+        const formattedNow = now.toISOString().slice(0, 16);
+        setter(formattedNow);
     };
 
     const handleDurationChange = (index, newDuration) => {
         const newEvents = [...events];
-        newEvents[index].duration = Math.round(parseFloat(newDuration));
-        adjustOtherTasks(newEvents, index);
+        newEvents[index].duration = parseInt(newDuration);
         setEvents(newEvents);
     };
 
@@ -105,37 +66,28 @@ const TimeDistributionTool = () => {
         const difference = totalMinutes - totalCurrentDuration;
 
         if (difference !== 0) {
-            const adjustableEvents = newEvents.filter((event, i) => i !== changedIndex && !event.locked);
-            const totalAdjustableDuration = adjustableEvents.reduce((sum, event) => sum + event.duration, 0);
+            const otherEvents = newEvents.filter((_, i) => i !== changedIndex);
+            const totalOtherDuration = otherEvents.reduce((sum, event) => sum + event.duration, 0);
 
-            if (totalAdjustableDuration > 0) {
-                adjustableEvents.forEach(event => {
-                    const proportion = event.duration / totalAdjustableDuration;
+            otherEvents.forEach((event, i) => {
+                if (i !== changedIndex) {
+                    const proportion = event.duration / totalOtherDuration;
                     event.duration += Math.round(difference * proportion);
-                });
-            } else {
-                console.warn("No adjustable events found. Unable to distribute time difference.");
-            }
+                }
+            });
         }
 
-        // Ensure total is exactly 100%
         const finalTotal = newEvents.reduce((sum, event) => sum + event.duration, 0);
         if (finalTotal !== totalMinutes) {
             const diff = totalMinutes - finalTotal;
-            const lastAdjustableIndex = newEvents.findLastIndex(event => !event.locked);
-            if (lastAdjustableIndex !== -1) {
-                newEvents[lastAdjustableIndex].duration += diff;
-            } else {
-                console.warn("No adjustable events found. Unable to correct final total.");
-            }
+            newEvents[newEvents.length - 1].duration += diff;
         }
     };
 
     const distributeTimeEqually = () => {
         const totalMinutes = calculateTotalTime(startDateTime, endDateTime).totalMinutes;
         const unlockedEvents = events.filter(event => !event.locked);
-        const lockedTime = events.filter(event => event.locked).reduce((sum, event) => sum + event.duration, 0);
-        const remainingTime = totalMinutes - lockedTime;
+        const remainingTime = totalMinutes - events.filter(event => event.locked).reduce((sum, event) => sum + event.duration, 0);
 
         if (remainingTime <= 0) {
             alert("No time left to distribute among unlocked tasks!");
@@ -143,26 +95,12 @@ const TimeDistributionTool = () => {
         }
 
         const equalShare = Math.floor(remainingTime / unlockedEvents.length);
-
-        if (equalShare === 0) {
-            alert("Not enough time to distribute equally among unlocked tasks!");
-            return;
-        }
-
         const newEvents = events.map(event => {
             if (event.locked) return event;
             return { ...event, duration: equalShare };
         });
 
-        // Distribute any remaining minutes
-        const distributedTime = equalShare * unlockedEvents.length;
-        const leftoverMinutes = remainingTime - distributedTime;
-        for (let i = 0; i < leftoverMinutes; i++) {
-            const index = newEvents.findIndex((event, idx) => !event.locked && event.duration === equalShare);
-            if (index !== -1) newEvents[index].duration += 1;
-        }
-
-        setEvents(newEvents);
+        setEvents(newEvents); // Update state with the new durations
     };
 
     const distributeTimeProportionally = () => {
@@ -179,24 +117,21 @@ const TimeDistributionTool = () => {
         const totalUnlockedTime = unlockedEvents.reduce((sum, event) => sum + event.duration, 0);
 
         if (totalUnlockedTime === 0) {
-            distributeTimeEqually(); // If all unlocked tasks have 0 duration, distribute equally
+            distributeTimeEqually();
             return;
         }
 
-        let distributedTime = 0;
         const newEvents = events.map(event => {
             if (event.locked) return event;
             const proportion = event.duration / totalUnlockedTime;
-            const newDuration = Math.floor(remainingTime * proportion);
-            distributedTime += newDuration;
-            return { ...event, duration: newDuration };
+            return { ...event, duration: Math.round(remainingTime * proportion) };
         });
 
-        // Distribute any remaining minutes
-        const leftoverMinutes = remainingTime - distributedTime;
-        for (let i = 0; i < leftoverMinutes; i++) {
-            const index = newEvents.findIndex(event => !event.locked);
-            if (index !== -1) newEvents[index].duration += 1;
+        const finalTotal = newEvents.reduce((sum, event) => sum + event.duration, 0);
+        const diff = totalMinutes - finalTotal;
+        const lastUnlockedIndex = newEvents.map(e => !e.locked).lastIndexOf(true);
+        if (lastUnlockedIndex !== -1) {
+            newEvents[lastUnlockedIndex].duration += diff;
         }
 
         setEvents(newEvents);
@@ -248,37 +183,75 @@ const TimeDistributionTool = () => {
         const newEvents = [...events];
         const targetIndex = direction === 'up' ? index - 1 : index + 1;
         if (targetIndex >= 0 && targetIndex < events.length) {
-            const temp = newEvents[targetIndex];
-            newEvents[targetIndex] = newEvents[index];
-            newEvents[index] = temp;
+            [newEvents[index], newEvents[targetIndex]] = [newEvents[targetIndex], newEvents[index]];
             setEvents(newEvents);
         }
     };
 
-    const formatDateTimeForInput = (dateString) => {
-        const date = new Date(dateString);
-        const userTimezoneOffset = date.getTimezoneOffset() * 60000;
-        return (new Date(date.getTime() - userTimezoneOffset)).toISOString().slice(0, 16);
+    const copyTableToClipboard = () => {
+        if (tableRef.current) {
+            const rows = tableRef.current.querySelectorAll('tbody tr');
+            let clipboardText = '';
+
+            rows.forEach((row) => {
+                const columns = row.querySelectorAll('td');
+                const date = columns[0].textContent;
+                const task = columns[1].textContent;
+                const duration = formatDuration(columns[2].querySelector('span').textContent);
+                const startTime = columns[3].textContent;
+                const endTime = columns[4].textContent;
+
+                // Use tab as a separator
+                clipboardText += `${date}\t${task}\t${duration}\t${startTime}\t${endTime}\n`;
+            });
+
+            navigator.clipboard.writeText(clipboardText.trim())
+                .then(() => alert('Table copied to clipboard!'))
+                .catch((err) => console.error('Failed to copy table: ', err));
+        }
     };
 
-    const formatDateTimeForDisplay = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        });
+    const formatDuration = (duration) => {
+        const minutes = parseInt(duration);
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        return `${hours.toString().padStart(2, '0')}:${remainingMinutes.toString().padStart(2, '0')}:00`;
+    };
+
+    const handleDurationChangeInTable = (index, newDuration) => {
+        const newEvents = [...events];
+        newEvents[index].duration = parseInt(newDuration); // Only update the specific event
+        setEvents(newEvents); // Update state without affecting other sliders
+    };
+
+    const toggleLockInTable = (index) => {
+        const newEvents = [...events];
+        newEvents[index].locked = !newEvents[index].locked;
+        setEvents(newEvents);
+    };
+
+    const reorderEventsInTable = (index, direction) => {
+        const newEvents = [...events];
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex >= 0 && targetIndex < newEvents.length) {
+            [newEvents[index], newEvents[targetIndex]] = [newEvents[targetIndex], newEvents[index]];
+            setEvents(newEvents);
+        }
+    };
+
+    const deleteEventInTable = (index) => {
+        const eventToDelete = events[index];
+        setDeletedEvents([...deletedEvents, eventToDelete]);
+        const newEvents = events.filter((_, i) => i !== index);
+        adjustOtherTasks(newEvents, -1);
+        setEvents(newEvents);
     };
 
     return (
         <div className="container mx-auto p-8 bg-gray-100 rounded-lg shadow-lg">
             <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">Enhanced Time Distribution Tool</h1>
             
-                {/* Text Area for Tubular Data */}
-                <div className="mb-4">
+            <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700">Enter Tubular Data:</label>
                 <textarea
                     value={tubularInput}
@@ -300,8 +273,8 @@ const TimeDistributionTool = () => {
                     <div className="flex items-center">
                         <input 
                             type="datetime-local" 
-                            value={formatDateTimeForInput(startDateTime)} 
-                            onChange={(e) => setStartDateTime(new Date(e.target.value).toISOString())} 
+                            value={startDateTime} 
+                            onChange={(e) => setStartDateTime(e.target.value)} 
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
                         />
                         <button 
@@ -311,17 +284,14 @@ const TimeDistributionTool = () => {
                             Now
                         </button>
                     </div>
-                    <div className="text-sm text-gray-600 mt-1">
-                        {formatDateTimeForDisplay(startDateTime)}
-                    </div>
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700">End Date/Time:</label>
                     <div className="flex items-center">
                         <input 
                             type="datetime-local" 
-                            value={formatDateTimeForInput(endDateTime)} 
-                            onChange={(e) => setEndDateTime(new Date(e.target.value).toISOString())} 
+                            value={endDateTime} 
+                            onChange={(e) => setEndDateTime(e.target.value)} 
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm" 
                         />
                         <button 
@@ -330,9 +300,6 @@ const TimeDistributionTool = () => {
                         >
                             Now
                         </button>
-                    </div>
-                    <div className="text-sm text-gray-600 mt-1">
-                        {formatDateTimeForDisplay(endDateTime)}
                     </div>
                 </div>
             </div>
@@ -375,47 +342,13 @@ const TimeDistributionTool = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {events.map((item, index) => (
-                    <div key={item.name} className="bg-white p-4 rounded-md shadow">
-                        <div className="flex justify-between items-center mb-2">
-                            <label className="text-lg font-semibold text-gray-700">{item.name}</label>
-                            <button 
-                                onClick={() => toggleLock(index)} 
-                                className={`p-2 rounded ${item.locked ? 'bg-red-500' : 'bg-green-500'} text-white`}
-                            >
-                                {item.locked ? 'Unlock' : 'Lock'}
-                            </button>
-                        </div>
-                        <input
-                            type="range"
-                            min="0"
-                            max={totalTime.days * 24 * 60 + totalTime.hours * 60 + totalTime.minutes}
-                            value={item.duration}
-                            onChange={(e) => handleDurationChange(index, e.target.value)}
-                            disabled={item.locked}
-                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                        />
-                        <div className="flex justify-between mt-2 text-sm text-gray-600">
-                            <span>{item.duration} minutes</span>
-                            <span>{Math.round(item.duration / (totalTime.days * 24 * 60 + totalTime.hours * 60 + totalTime.minutes) * 100)}%</span>
-                        </div>
-                        <div className="flex justify-between mt-4">
-                            <button onClick={() => reorderEvents(index, 'up')} className="bg-green-500 text-white p-2 rounded">Move Up</button>
-                            <button onClick={() => reorderEvents(index, 'down')} className="bg-yellow-500 text-white p-2 rounded">Move Down</button>
-                            <button onClick={() => deleteEvent(index)} className="bg-red-500 text-white p-2 rounded">Delete</button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
             <p className="mt-8 text-center text-lg font-semibold text-gray-700">
                 Total time: {totalTime.days} days, {totalTime.hours} hours, {totalTime.minutes} minutes
             </p>
 
-            <div className="mt-8">
-                <h2 className="text-2xl font-bold mb-4">Time Table</h2>
-                <table className="min-w-full bg-white">
+            <div className="mt-8 relative">
+                <h2 className="text-2xl font-bold mb-4">Interactive Time Table</h2>
+                <table className="min-w-full bg-white" ref={tableRef}>
                     <thead>
                         <tr>
                             <th className="py-2 px-4 border-b">Date</th>
@@ -423,6 +356,7 @@ const TimeDistributionTool = () => {
                             <th className="py-2 px-4 border-b">Duration</th>
                             <th className="py-2 px-4 border-b">Start Time</th>
                             <th className="py-2 px-4 border-b">End Time</th>
+                            <th className="py-2 px-4 border-b">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -430,9 +364,54 @@ const TimeDistributionTool = () => {
                             <tr key={index}>
                                 <td className="py-2 px-4 border-b">{row.date}</td>
                                 <td className="py-2 px-4 border-b">{row.task}</td>
-                                <td className="py-2 px-4 border-b">{row.duration}</td>
+                                <td className="py-2 px-4 border-b">
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max={totalTime.days * 24 * 60 + totalTime.hours * 60 + totalTime.minutes}
+                                        value={events[index].duration}
+                                        onChange={(e) => handleDurationChangeInTable(index, e.target.value)} // Only updates the current slider
+                                        disabled={events[index].locked} // Keep the lock functionality
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                    />
+                                    <span>{events[index].duration} minutes</span>
+                                </td>
                                 <td className="py-2 px-4 border-b">{row.startTime}</td>
                                 <td className="py-2 px-4 border-b">{row.endTime}</td>
+                                <td className="py-2 px-4 border-b">
+                                <div className="flex space-x-2">
+                                    <button
+                                    onClick={() => toggleLockInTable(index)}
+                                    className={`p-1 rounded ${events[index].locked ? 'bg-red-500' : 'bg-green-500'} text-white text-xs`}
+                                    >
+                                    {events[index].locked ? 'Unlock' : 'Lock'}
+                                    </button>
+                                    <button
+                                    onClick={() => reorderEventsInTable(index, 'up')}
+                                    className="bg-green-500 text-white p-1 rounded text-xs"
+                                    >
+                                    ↑
+                                    </button>
+                                    <button
+                                    onClick={() => reorderEventsInTable(index, 'down')}
+                                    className="bg-yellow-500 text-white p-1 rounded text-xs"
+                                    >
+                                    ↓
+                                    </button>
+                                    <button
+                                    onClick={() => deleteEventInTable(index)}
+                                    className="bg-red-500 text-white p-1 rounded text-xs"
+                                    >
+                                    Delete
+                                    </button>
+                                    <button
+                                    onClick={copyTableToClipboard}
+                                    className="fixed bottom-4 right-4 bg-blue-500 text-white p-2 rounded shadow-lg hover:bg-blue-600 transition-colors"
+                                    >
+                                    Copy Table
+                                    </button>
+                                </div>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
