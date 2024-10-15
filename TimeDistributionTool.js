@@ -13,6 +13,7 @@ const TimeDistributionTool = () => {
     const [deletedEvents, setDeletedEvents] = React.useState([]);
     const [tubularInput, setTubularInput] = React.useState('');
     const tableRef = React.useRef(null);
+    const [tooltipVisible, setTooltipVisible] = React.useState(Array(events.length).fill(false));
 
     React.useEffect(() => {
         const { totalMinutes, formattedTime } = calculateTotalTime(startDateTime, endDateTime);
@@ -100,7 +101,7 @@ const TimeDistributionTool = () => {
             return { ...event, duration: equalShare };
         });
 
-        setEvents(newEvents); // Update state with the new durations
+        setEvents(newEvents);
     };
 
     const distributeTimeProportionally = () => {
@@ -201,7 +202,6 @@ const TimeDistributionTool = () => {
                 const startTime = columns[3].textContent;
                 const endTime = columns[4].textContent;
 
-                // Use tab as a separator
                 clipboardText += `${date}\t${task}\t${duration}\t${startTime}\t${endTime}\n`;
             });
 
@@ -220,8 +220,8 @@ const TimeDistributionTool = () => {
 
     const handleDurationChangeInTable = (index, newDuration) => {
         const newEvents = [...events];
-        newEvents[index].duration = parseInt(newDuration); // Only update the specific event
-        setEvents(newEvents); // Update state without affecting other sliders
+        newEvents[index].duration = parseInt(newDuration);
+        setEvents(newEvents);
     };
 
     const toggleLockInTable = (index) => {
@@ -247,6 +247,25 @@ const TimeDistributionTool = () => {
         setEvents(newEvents);
     };
 
+    const fullLock = (index) => {
+        const newEvents = [...events];
+        newEvents[index].fullLocked = !newEvents[index].fullLocked;
+        setEvents(newEvents);
+    };
+
+    const lockDuration = (index) => {
+        const newEvents = [...events];
+        newEvents[index].durationLocked = !newEvents[index].durationLocked;
+        setEvents(newEvents);
+    };
+
+    // Tooltip component
+    const Tooltip = ({ children, isVisible }) => (
+        <div className={`absolute bottom-full left-1/2 transform -translate-x-1/2 bg-gray-800 text-white p-2 rounded shadow-lg transition-opacity ${isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            {children}
+        </div>
+    );
+
     return (
         <div className="container mx-auto p-8 bg-gray-100 rounded-lg shadow-lg">
             <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">Enhanced Time Distribution Tool</h1>
@@ -266,7 +285,7 @@ const TimeDistributionTool = () => {
                     Submit Tubular Data
                 </button>
             </div>
-
+    
             <div className="mb-4 flex justify-between">
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Start Date/Time:</label>
@@ -303,11 +322,11 @@ const TimeDistributionTool = () => {
                     </div>
                 </div>
             </div>
-
+    
             <div className="flex justify-center mb-8">
                 <svg id="chart"></svg>
             </div>
-
+    
             <div className="mb-4 flex justify-between items-center">
                 <div>
                     <input 
@@ -341,11 +360,11 @@ const TimeDistributionTool = () => {
                     </button>
                 </div>
             </div>
-
+    
             <p className="mt-8 text-center text-lg font-semibold text-gray-700">
                 Total time: {totalTime.days} days, {totalTime.hours} hours, {totalTime.minutes} minutes
             </p>
-
+    
             <div className="mt-8 relative">
                 <h2 className="text-2xl font-bold mb-4">Interactive Time Table</h2>
                 <table className="min-w-full bg-white" ref={tableRef}>
@@ -370,8 +389,8 @@ const TimeDistributionTool = () => {
                                         min="0"
                                         max={totalTime.days * 24 * 60 + totalTime.hours * 60 + totalTime.minutes}
                                         value={events[index].duration}
-                                        onChange={(e) => handleDurationChangeInTable(index, e.target.value)} // Only updates the current slider
-                                        disabled={events[index].locked} // Keep the lock functionality
+                                        onChange={(e) => handleDurationChangeInTable(index, e.target.value)}
+                                        disabled={events[index].locked}
                                         className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                                     />
                                     <span>{events[index].duration} minutes</span>
@@ -379,44 +398,64 @@ const TimeDistributionTool = () => {
                                 <td className="py-2 px-4 border-b">{row.startTime}</td>
                                 <td className="py-2 px-4 border-b">{row.endTime}</td>
                                 <td className="py-2 px-4 border-b">
-                                <div className="flex space-x-2">
-                                    <button
-                                    onClick={() => toggleLockInTable(index)}
-                                    className={`p-1 rounded ${events[index].locked ? 'bg-red-500' : 'bg-green-500'} text-white text-xs`}
-                                    >
-                                    {events[index].locked ? 'Unlock' : 'Lock'}
-                                    </button>
-                                    <button
-                                    onClick={() => reorderEventsInTable(index, 'up')}
-                                    className="bg-green-500 text-white p-1 rounded text-xs"
-                                    >
-                                    ↑
-                                    </button>
-                                    <button
-                                    onClick={() => reorderEventsInTable(index, 'down')}
-                                    className="bg-yellow-500 text-white p-1 rounded text-xs"
-                                    >
-                                    ↓
-                                    </button>
-                                    <button
-                                    onClick={() => deleteEventInTable(index)}
-                                    className="bg-red-500 text-white p-1 rounded text-xs"
-                                    >
-                                    Delete
-                                    </button>
-                                    <button
-                                    onClick={copyTableToClipboard}
-                                    className="fixed bottom-4 right-4 bg-blue-500 text-white p-2 rounded shadow-lg hover:bg-blue-600 transition-colors"
-                                    >
-                                    Copy Table
-                                    </button>
-                                </div>
+                                    <div className="flex space-x-2">
+                                        <div className="relative">
+                                            <button
+                                                onMouseEnter={() => {
+                                                    const newTooltipVisible = [...tooltipVisible];
+                                                    newTooltipVisible[index] = true;
+                                                    setTooltipVisible(newTooltipVisible);
+                                                }}
+                                                onMouseLeave={() => {
+                                                    const newTooltipVisible = [...tooltipVisible];
+                                                    newTooltipVisible[index] = false;
+                                                    setTooltipVisible(newTooltipVisible);
+                                                }}
+                                                onClick={() => toggleLockInTable(index)}
+                                                className={`p-1 rounded ${events[index].locked ? 'bg-red-500' : 'bg-green-500'} text-white text-xs`}
+                                            >
+                                                {events[index].locked ? 'Unlock' : 'Lock'}
+                                            </button>
+                                            <Tooltip isVisible={tooltipVisible[index]}>
+                                                <button onClick={() => fullLock(index)} className="block w-full text-left p-1 hover:bg-gray-700">
+                                                    Full Lock
+                                                </button>
+                                                <button onClick={() => lockDuration(index)} className="block w-full text-left p-1 hover:bg-gray-700">
+                                                    Lock Duration
+                                                </button>
+                                            </Tooltip>
+                                        </div>
+                                        <button
+                                            onClick={() => reorderEventsInTable(index, 'up')}
+                                            className="bg-green-500 text-white p-1 rounded text-xs"
+                                        >
+                                            ↑
+                                        </button>
+                                        <button
+                                            onClick={() => reorderEventsInTable(index, 'down')}
+                                            className="bg-yellow-500 text-white p-1 rounded text-xs"
+                                        >
+                                            ↓
+                                        </button>
+                                        <button
+                                            onClick={() => deleteEventInTable(index)}
+                                            className="bg-red-500 text-white p-1 rounded text-xs"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
+            <button
+                onClick={copyTableToClipboard}
+                className="fixed bottom-4 right-4 bg-blue-500 text-white p-2 rounded shadow-lg hover:bg-blue-600 transition-colors"
+            >
+                Copy Table
+            </button>
         </div>
     );
 };
